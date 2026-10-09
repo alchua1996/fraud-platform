@@ -155,16 +155,41 @@ On Windows, create and activate the project environment in PowerShell instead:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install "pyspark>=3.5,<4" "xgboost>=2"
 ```
 
-The requirements include the service and test dependencies, plus NumPy, pandas, scikit-learn,
-PySpark 3.x and XGBoost for local model training. PySpark 3.x is used for compatibility with
-Java 11; the Docker image remains on Python 3.12.
+Activation is optional; calling the venv's `python.exe` directly also avoids PowerShell
+execution-policy issues. The requirements include NumPy, pandas and scikit-learn. PySpark and
+XGBoost are optional local training tools and are installed separately so they don't become
+service/container dependencies. PySpark 3.x is compatible with Java 11.
 
-Without `DATABASE_URL` set, the decision log goes to SQLite at `data/decisions.db`.
+For local Windows development without Docker, use `fakeredis` as a lightweight, in-memory Redis
+replacement. Start it in one PowerShell terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from fakeredis import TcpFakeServer; s = TcpFakeServer(('127.0.0.1', 6379)); s.daemon_threads = True; print('fakeredis listening on 127.0.0.1:6379'); s.serve_forever()"
+```
+
+In another terminal, generate data, load profiles, and start the API:
+
+```powershell
+.\.venv\Scripts\python.exe -m simulator.generate
+.\.venv\Scripts\python.exe -m jobs.build_profiles
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1
+```
+
+Without `DATABASE_URL` set, the decision log goes to SQLite at `data/decisions.db`. The SQLite
+file persists across runs; fakeredis data is lost when its process stops, so regenerate data
+and reload profiles after restarting it. This setup is for local iteration, not production-like
+Redis persistence or distributed testing.
+
+After replaying transactions, query the persistent decision log from PowerShell with:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import sqlite3; c = sqlite3.connect('data/decisions.db'); print(list(c.execute('SELECT decision, COUNT(*) FROM decisions GROUP BY decision')))"
+```
 
 ## Deploying to a $24/month server (AWS Lightsail)
 
