@@ -1,0 +1,64 @@
+# The whole platform on one machine: the scoring API, Redis for online features, and
+# Postgres for the decision log. Start it with `make up` (or `docker compose up -d --build`).
+
+name: fraud-platform
+
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # Service names (redis, postgres) double as hostnames on the Compose network.
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fraud}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-fraud}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mounted rather than baked into the image, so new data and models don't need a rebuild.
+      - ./data:/app/data
+      - ./models:/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Redis holds only data that can be rebuilt (rerun the batch job, replay traffic), so it
+    # doesn't save to disk. noeviction: when memory runs out, writes fail loudly instead of
+    # Redis quietly deleting keys. Try filling it up (see the README's experiments section).
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    # No "ports:" on purpose. Redis is reachable only from other containers, never from the
+    # internet. Use `make redis-cli` to get a shell.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fraud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-fraud}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Like Redis, not exposed outside the Compose network. Use `make psql`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

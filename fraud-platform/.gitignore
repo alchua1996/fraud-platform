@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+
+# Generated data and trained models stay out of git; regenerate them with make.
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
