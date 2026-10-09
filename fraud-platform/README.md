@@ -151,6 +151,19 @@ uvicorn app.main:app --reload    # in another terminal
 python -m scripts.replay --truth data/ground_truth.parquet
 ```
 
+On Windows, create and activate the project environment in PowerShell instead:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+The requirements include the service and test dependencies, plus NumPy, pandas, scikit-learn,
+PySpark 3.x and XGBoost for local model training. PySpark 3.x is used for compatibility with
+Java 11; the Docker image remains on Python 3.12.
+
 Without `DATABASE_URL` set, the decision log goes to SQLite at `data/decisions.db`.
 
 ## Deploying to a $24/month server (AWS Lightsail)
